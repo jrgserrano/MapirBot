@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # MapirBot
 
 MapirBot is an autonomous AI assistant built with **LangGraph**, **LangChain**, and **OpenAI (LM Studio backend)**. It features memory management, persistence, and a supervisor-led workflow.
@@ -64,3 +65,6 @@ This script will:
 
 The workflow follows this logical path:
 `trim_memory` (summarization) → `supervisor` (decision) → `final_answer` (response).
+=======
+# MapirBot
+>>>>>>> 5f767edd5e0aa9b22295c192aebdc7b73c9c6c8a
