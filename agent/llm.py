@@ -1,16 +1,24 @@
-import sqlite3
-from langgraph.checkpoint.sqlite import SqliteSaver
-from langchain_openai import ChatOpenAI
+from langchain_ollama import ChatOllama
 from tools.knowledge_base import knowledge_base, knowledge_base_update
 
-conn = sqlite3.connect("database/checkpoints.sqlite", check_same_thread=False)
-db_checkpointer = SqliteSaver(conn)
+# Checkpointer will be initialized asynchronously in the main app
+db_checkpointer = None
 
-# Supervisor LLM
-llm_main = ChatOpenAI(
-    base_url="http://127.0.0.1:1234/v1",
-    api_key="not-needed",
-    model_name="local-model",
-    temperature=0.7
-    )
-#.bind_tools([knowledge_base, knowledge_base_update])
+# Main LLM for text generation (unbound)
+llm_text = ChatOllama(
+    model="llama3.2:3b", #"qwen3-vl:8b",
+    num_ctx=8192,
+    num_thread=8,
+    temperature=0.3
+)
+
+# LLM bound to tools for technical searches
+llm_main = llm_text.bind_tools([knowledge_base, knowledge_base_update])
+
+# Targeted, fast router for graph logic (llama3.2:3b is much faster for routing)
+llm_router = ChatOllama(
+    model="llama3.2:3b",
+    num_ctx=8192,
+    num_thread=8,
+    temperature=0
+)

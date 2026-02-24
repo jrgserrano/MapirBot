@@ -1,38 +1,49 @@
 # MapirBot
 
-MapirBot is an autonomous AI assistant built with **LangGraph**, **LangChain**, and **OpenAI (LM Studio backend)**. It features memory management, persistence, and a supervisor-led workflow.
+MapirBot is an advanced autonomous AI assistant built with **LangGraph**, **LangChain**, and **Ollama/OpenAI**. It features a hybrid memory architecture, MCP tool integration, and a supervisor-led workflow for complex technical information retrieval.
 
 ## Project Structure
 
 ```text
 .
 ├── agent/
-│   ├── graph.py          # Workflow orchestration using LangGraph.
-│   ├── nodes.py          # Core logic for each step (Supervisor, Writer, Trimming).
-│   ├── state.py          # State definition (messages, research, summary, etc.).
-│   └── llm.py            # LLM initialization and persistence setup.
-├── scripts/
-│   └── test_graph.py     # End-to-end test script for the agent.
-├── database/            # Contains SQLite persistence for session memory.
-├── .env                 # Environment variables (Slack API keys, LLM URL).
-└── requirements.txt     # Python dependencies.
+│   ├── graph.py          # Workflow orchestration and routing using LangGraph.
+│   ├── nodes.py          # Node logic (Supervisor, Memory Node, Final Answer, etc.).
+│   ├── state.py          # State definition (messages, summary, metadata).
+│   ├── llm.py            # LLM initialization (Main, Router, Text) and persistence.
+│   └── graphiti_client.py # Singleton client for Graphiti (Neo4j Knowledge Graph).
+├── tools/
+│   ├── knowledge_base.py # Hybrid Search (Chroma Vector DB + Graphiti Graph).
+│   ├── weather.py        # Weather retrieval tool.
+│   └── web_scraper.py    # URL content extraction tool.
+├── database/             # SQLite checkpoints and ChromaDB persistence.
+├── server.py             # FastAPI server with MCP client lifecycle management.
+├── .env                  # Environment variables (Neo4j, LLM, Slack).
+└── requirements.txt      # Python dependencies.
 ```
 
 ## Key Features
 
-- **Supervisor Workflow**: A central node decides whether the agent should research, think, or write the final answer.
-- **Short-Term Memory**: Conversation history is persisted across restarts using a SQLite backend.
-- **Dynamic Sliding Window**: To keep the context lean, the agent automatically trims history (keeps the last 10 messages).
-- **Contextual Summarization**: When messages are trimmed, the agent automatically updates a conversation `summary` so it never truly "forgets" the context.
-- **Role Continuity**: Ensures strict alternating roles (user/assistant) in the history to comply with LLM backend requirements.
+- **Hybrid Memory Architecture**:
+    - **Vector Storage (Chroma)**: Long-term storage for documents and technical manuals.
+    - **Knowledge Graph (Graphiti/Neo4j)**: Persistent storage for entities, relationships, and user habits extracted from prompts.
+- **Supervisor Workflow**: A central node that intelligently routes tasks to specialized nodes based on user intent.
+- **Episodic Memory Extraction**: A dedicated `memory_node` identifies and saves relevant personal info or project details into the Knowledge Graph during conversation.
+- **MCP Integration**: Uses the Model Context Protocol (MCP) to connect with external research tools (e.g., Paper Search).
+- **Dynamic Context Management**: Automatic sliding window for message history with contextual summarization to preserve long-term relevance.
+- **Persistence**: Full conversation state persistence using SQLite checkpoints.
 
 ## Prerequisites
 
-1.  **LM Studio** (or another OpenAI-compatible local server) running at `http://127.0.0.1:1234/v1`.
-2.  **Environment Variables**: Create a `.env` file in the root directory:
+1.  **Neo4j**: Required for the Knowledge Graph (Graphiti).
+2.  **Ollama** (or OpenAI-compatible API): Running local models (e.g., `llama3.2`, `mxbai-embed-large`).
+3.  **Environment Variables**:
     ```bash
-    OPENAI_API_KEY=not-needed
-    LM_STUDIO_BASE_URL=http://127.0.0.1:1234/v1
+    NEO4J_URI=bolt://localhost:7687
+    NEO4J_USER=neo4j
+    NEO4J_PASSWORD=your_password
+    OPENAI_BASE_URL=http://localhost:11434/v1
+    MODEL_NAME=llama3.2
     ```
 
 ## Installation
@@ -60,7 +71,16 @@ This script will:
 2.  Verify that the agent remembers the user's name across turns.
 3.  Demonstrate the supervisor's decision-making process.
 
-## Architecture Diagram
+## Architecture Overview
 
-The workflow follows this logical path:
-`trim_memory` (summarization) → `supervisor` (decision) → `final_answer` (response).
+The agent is orchestrated using **LangGraph**. The workflow follows this path:
+
+1.  **`trim_memory`**: Trims history and updates the conversation summary.
+2.  **`supervisor`**: Analyzes the query and decides the next step:
+    - `SEARCH_KNOWLEDGE` → `knowledge_base` (Chroma + Graphiti)
+    - `SEARCH_WEATHER` → `weather_node`
+    - `SEARCH_WEB_PAPERS` → `paper_search_agent` (MCP)
+    - `SCRAPE_URL` → `web_scraper_node`
+    - `MEMORY_UPDATE` → `memory_node` (Enrich Knowledge Graph)
+    - `WRITE` → `final_answer`
+3.  **Synthesizer**: Tools return information to the supervisor or proceed to the `final_answer` node for polished response generation.

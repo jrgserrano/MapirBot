@@ -2,6 +2,7 @@
 
 *.db
 database/
+memory/
 
 models/
 __pycache__/
@@ -11,3 +12,5 @@ venv/
 .venv
 
 *.log
+
+*.png
