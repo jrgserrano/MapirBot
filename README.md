@@ -1,6 +1,6 @@
 # MapirBot
 
-MapirBot is an advanced autonomous AI assistant built with **LangGraph**, **LangChain**, and **Ollama/OpenAI**. It features a hybrid memory architecture, MCP tool integration, and a supervisor-led workflow for complex technical information retrieval.
+MapirBot is an advanced autonomous AI assistant built with **LangGraph**, **LangChain**, and **Ollama/OpenAI**. It features a hybrid memory architecture, MCP tool integration, autonomous **WebRover-style** web search, and a supervisor-led workflow.
 
 ## Project Structure
 
@@ -24,6 +24,7 @@ MapirBot is an advanced autonomous AI assistant built with **LangGraph**, **Lang
 
 ## Key Features
 
+- **Autonomous Web Search (WebRover Style)**: Utilizes DuckDuckGo for independent link discovery and multi-step research.
 - **Hybrid Memory Architecture**:
     - **Vector Storage (Chroma)**: Long-term storage for documents and technical manuals.
     - **Knowledge Graph (Graphiti/Neo4j)**: Persistent storage for entities, relationships, and user habits extracted from prompts.
@@ -66,11 +67,6 @@ To run the end-to-end test and see the agent in action:
 python3 scripts/test_graph.py
 ```
 
-This script will:
-1.  Introduce a user to the agent.
-2.  Verify that the agent remembers the user's name across turns.
-3.  Demonstrate the supervisor's decision-making process.
-
 ## Architecture Overview
 
 The agent is orchestrated using **LangGraph**. The workflow follows this path:
@@ -80,7 +76,8 @@ The agent is orchestrated using **LangGraph**. The workflow follows this path:
     - `SEARCH_KNOWLEDGE` → `knowledge_base` (Chroma + Graphiti)
     - `SEARCH_WEATHER` → `weather_node`
     - `SEARCH_WEB_PAPERS` → `paper_search_agent` (MCP)
+    - `SEARCH_WEB_ROVER` → `web_research` (Autonomous multi-step search)
     - `SCRAPE_URL` → `web_scraper_node`
     - `MEMORY_UPDATE` → `memory_node` (Enrich Knowledge Graph)
     - `WRITE` → `final_answer`
-3.  **Synthesizer**: Tools return information to the supervisor or proceed to the `final_answer` node for polished response generation.
+3.  **Synthesizer**: Tools return information for final short and clear response generation.

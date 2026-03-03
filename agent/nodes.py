@@ -1,5 +1,7 @@
 from langchain_core.messages import SystemMessage
 from agent.llm import llm_main, llm_router, llm_text
+import numpy as np
+from langchain_community.embeddings import OllamaEmbeddings
 from agent.state import AgentState
 from langchain_core.messages import RemoveMessage, HumanMessage, AIMessage
 from pydantic import BaseModel, Field
@@ -9,13 +11,14 @@ import json
 from tools.knowledge_base import knowledge_base, knowledge_base_update
 from tools.weather import get_weather
 from tools.web_scraper import scrape_web
+from tools.web_search import web_search
 from agent.graphiti_client import get_graphiti
 from graphiti_core.nodes import EpisodeType
 from datetime import datetime, timezone
 
 class Router(BaseModel):
     """Call this tool to route the conversation to the next specialized node."""
-    next_step: Literal["SEARCH_KNOWLEDGE", "SEARCH_WEATHER", "SEARCH_WEB_PAPERS", "SCRAPE_URL", "WRITE"] = Field(
+    next_step: Literal["SEARCH_KNOWLEDGE", "SEARCH_WEATHER", "SEARCH_WEB_ROVER", "SCRAPE_URL", "MEMORY_UPDATE", "WRITE"] = Field(
         description="The next action to take."
     )
 
@@ -23,35 +26,48 @@ async def supervisor_agent(state: AgentState) -> dict:
     """ This node decides what action to take using structured output and sequential logic """
 
     current_time = state.get("current_time", "Unknown")
+    loop_count = state.get("loop_count", 0) + 1 # Increment loop on every visit
 
     prompt = f"""
-    You are the "MapirBot Supervisor", an expert at orchestrating technical information retrieval.
-    Your goal is to answer the user's query by delegating to the right specialized tools.
-    CURRENT TIME (UTC): {current_time}
+    You are MapirBot, an autonomous technical assistant. You are an expert at orchestrating technical information retrieval.
+    Your goal is to answer the user's query by delegating to the right specialized tools like human reasoning, web search, or knowledge base.
 
-    --- TOOLS AVAILABLE ---
-    - SEARCH_KNOWLEDGE: Hybrid database using Vector Storage and a Relational Knowledge Graph. 
-      Use this for deep context about projects, team members, or technical manuals.
+    You have access to the following tools:
+    - SEARCH_KNOWLEDGE: Hybrid database using Vector Storage and a Relational Knowledge Graph. Use this for deep context about projects, team members, or technical manuals.
     - SEARCH_WEATHER: Precise weather data for a location.
-    - SEARCH_WEB_PAPERS: Deep technical research using scholarly sources (MCP tools). Use this if SEARCH_KNOWLEDGE is not enough.
+    - SEARCH_WEB_ROVER: Autonomous web search for general information, troubleshooting, or latest news.
     - SCRAPE_URL: Extracts information directly from a specific link/URL provided by the user.
-    - MEMORY_UPDATE: Call this if the user provides personal information, preferences, or project details that should be remembered in the long-term knowledge graph. 
-    - WRITE: Send the final response to the user.
+    - MEMORY_UPDATE: EXTREMELY IMPORTANT. Call this IMMEDIATELY if the user provides personal information (e.g. "I am Jorge", "I like padel"), preferences, or project details that should be remembered in the long-term knowledge graph. Do this BEFORE saying hello.
+    - WRITE: Send the final response to the user. Use this DIRECTLY for greetings, casual chat, or answering questions when no tool is needed.
 
-    Answer ONLY with the JSON representing the next step.
+    Output format:
+    {{
+        "next_step": "SEARCH_KNOWLEDGE" | "SEARCH_WEATHER" | "SEARCH_WEB_ROVER" | "SCRAPE_URL" | "MEMORY_UPDATE" | "WRITE"
+    }}
+
+    CRITICAL RULE 1: If the user explicitly asks to "buscar", "search", or look something up on the internet, YOU MUST output "SEARCH_WEB_ROVER".
+    CRITICAL RULE 2: If the user states a NEW factual piece of personal information (name, hobby, location, etc.), YOU MUST output "MEMORY_UPDATE" first.
+    CRITICAL RULE 3: If the user is asking a question that requires external information (like concepts, news, weather, or project data), YOU MUST output the appropriate SEARCH tool (e.g., SEARCH_WEB_ROVER, SEARCH_KNOWLEDGE).
+    CRITICAL RULE 4: If the user is just saying hello, asking how you are, making small talk AND no personal facts were shared, OR if you already have the answer in the conversation history, YOU MUST output "WRITE".
+
+    Your current context is: {state.get("summary", "")}
     """
 
     try:
-        structured_llm = llm_router.with_structured_output(Router)
+        # Fallback security for loop control
+        if loop_count >= 4:
+           print("[WARN] Loop limit reached, forcing WRITE.")
+           return {"next_step": "WRITE", "loop_count": 1}
+
         messages = [SystemMessage(content=prompt)] + state["messages"]
-        decision = await structured_llm.ainvoke(messages)
+        decision = await llm_main.ainvoke(messages)
         
-        print(f"[DEBUG] Supervisor decision: {decision}")
+        print(f"[DEBUG] Supervisor decision: {decision} (Loop {loop_count})")
         
-        return {"next_step": decision.next_step}
+        return {"next_step": decision.next_step, "loop_count": 1}
     except Exception as e:
         print(f"[ERROR] Supervisor structured output failed: {e}")
-        return {"next_step": "WRITE"}
+        return {"next_step": "WRITE", "loop_count": 1}
 
 async def web_scraper_node(state: AgentState) -> dict:
     """ This node extracts content from a URL """
@@ -120,15 +136,13 @@ async def final_answer_agent(state: AgentState) -> dict:
     current_time = state.get("current_time", "Unknown")
 
     prompt = f"""
-    ROLE: MapirBot, a senior roboti
-    cs engineer. You are a colleague on Slack.
+    You are MapirBot an AI assistant for Mapir. You have to act as a human assistant following the rules below:
+     1. You have to answer in the same language as the user.
+     2. You have to answer as short as possible. BE EXTREMELY DRY AND CONCISE. Do not use conversational filler.
+     3. You have to answer in a natural way. 
+     4. You have to answer in a direct way. Answer the question immediately.
+     5. You have to answer in a helpful way. 
     CURRENT TIME: {current_time}
-
-    STRICT GUIDELINES:
-    1. CONCISE: Max 1-2 sentences. 
-    2. NATURAL: No "As an AI", "According to database", or "I don't have access".
-    3. DIRECT: Give facts directly (e.g., "Alice is in Malaga" instead of "The tool says Alice is in Malaga").
-    4. MATCH LANGUAGE: Respond in the same language as the user.
     """
 
     prompt += "\n\nContext from tools and history:"
@@ -138,7 +152,7 @@ async def final_answer_agent(state: AgentState) -> dict:
     for m in reversed(state["messages"]):
         if isinstance(m, HumanMessage):
             break
-        if isinstance(m, AIMessage) and any(x in m.content for x in ["Knowledge Base Info", "Weather Info", "Web Content Info", "Paper research results"]):
+        if isinstance(m, AIMessage) and any(x in m.content for x in ["Knowledge Base Info", "Weather Info", "Web Content Info"]):
             tool_contexts.append(m.content)
         # Also handle ToolMessages if they exist (from MCP tools directly)
         elif hasattr(m, 'tool_call_id'): # Generic check for tool message
@@ -156,7 +170,7 @@ async def final_answer_agent(state: AgentState) -> dict:
     
     # Add conversation history (excluding the meta-messages we just synthesized into the prompt)
     for m in state["messages"]:
-        if isinstance(m, AIMessage) and any(x in m.content for x in ["Knowledge Base Info", "Weather Info", "Web Content Info", "Paper research results"]):
+        if isinstance(m, AIMessage) and any(x in m.content for x in ["Knowledge Base Info", "Weather Info", "Web Content Info"]):
             continue
         messages.append(m)
 
@@ -166,12 +180,45 @@ async def final_answer_agent(state: AgentState) -> dict:
     response.content = re.sub(r'<think>.*?</think>', '', response.content, flags=re.DOTALL).strip()
     
     if response.content:
-        print(f"[INFO] Final Answer: {response.content[:100]}...")
+        print(f"[INFO] Final Answer Generated: {response.content[:50]}...")
     else:
         print("[WARN] Final Answer is EMPTY!")
         response.content = "No he podido procesar una respuesta clara con la información obtenida. ¿Podrías reformular la pregunta?"
 
-    return {"messages": [response], "next_step": None} # Clear next_step after use
+    return {
+        "messages": [response], 
+        "next_step": None, 
+        "logs": []
+    } 
+
+
+async def web_research_node(state: AgentState) -> dict:
+    """ This node performs a multi-step web research with intermediate feedback """
+    
+    query = state["messages"][-1].content
+    
+    # Update logs for feedback
+    print(f"[INFO] WebRover: Searching for links for '{query}'...")
+    search_links = await web_search.ainvoke(query)
+    
+    if not search_links or "error" in search_links[0]:
+        return {"messages": [AIMessage(content="Web Search Info: No relevant links found.")], "next_step": "SUPERVISOR", "logs": ["❌ No links found."]}
+
+    best_link = search_links[0]["link"]
+    title = search_links[0]["title"]
+    
+    # Feedback to user
+    logs = [f"🔍 Found relevant link: {title}", f"📄 Reading content from {best_link}..."]
+    print(f"[INFO] WebRover: {logs[-1]}")
+    
+    # Scrape the content
+    content = await scrape_web.ainvoke(best_link)
+    
+    return {
+        "messages": [AIMessage(content=f"Web Content Info from {best_link}:\n{content}")], 
+        "next_step": "SUPERVISOR",
+        "logs": logs
+    }
 
 
 async def memory_node(state: AgentState) -> dict:

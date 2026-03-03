@@ -1,17 +1,14 @@
 import requests
 import os
 import dotenv
+import aiohttp
 from slack_bolt.app.async_app import AsyncApp
 from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
-from langchain_mcp_adapters.client import MultiServerMCPClient
-
-from agent.graph import create_graph
 from tools.knowledge_base import knowledge_base_update
 import io
 from pypdf import PdfReader
 import asyncio
 from datetime import datetime, timezone
-from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
 dotenv.load_dotenv()
 
@@ -96,62 +93,29 @@ async def handle_message_events(event, say, client):
 
     print(f"[INFO] User query: {clean_query} (Time: {current_time_str})")
 
-    if not graph_app:
-        await say(text="_Error: AI Agent not initialized._")
-        return
-
-    async for chunk in graph_app.astream(
-        {"messages": [("user", clean_query)], "current_time": current_time_str}, 
-        config, 
-        stream_mode="updates"
-    ):
-        for node, update in chunk.items():
-            print(f"[INFO] Node: {node}")
-            
-            if node == "supervisor":
-                print(f"[INFO] Supervisor: {update['next_step']}")
-
-            if node == "knowledge_base":
-                await say(text="_Checking the database..._")
-            
-            if node == "weather":
-                await say(text="_Checking the weather..._")
-            
-            if node == "final_answer":
-                if "messages" in update:
-                    answer_text = update["messages"][-1].content
-                    print(f"[INFO] Final Answer Generated: {answer_text[:50]}...")
-                    response += answer_text
+    try:
+        async with aiohttp.ClientSession() as session:
+            payload = {
+                "query": clean_query,
+                "thread_id": channel_id
+            }
+            async with session.post("http://127.0.0.1:8000/ask", json=payload) as api_response:
+                if api_response.status == 200:
+                    data = await api_response.json()
+                    response = data.get("response", "Lo siento, hubo un problema procesando tu petición.")
+                else:
+                    response = f"_Error de API: HTTP {api_response.status}_"
+                    print(f"[ERROR] API returned {api_response.status}: {await api_response.text()}")
         
-    if response:
         await say(text=response)
-        
+    except Exception as e:
+        print(f"[ERROR] Failed to contact API: {e}")
+        await say(text="_Error contactando al servidor de MapirBot._")
 
 async def main():
-    global graph_app
-    
-    mcp_client = MultiServerMCPClient({
-        "paper_search" : {
-            "command" : "python",
-            "args" : ["-m", "paper_search_mcp.server"],
-            "transport" : "stdio"
-        }
-    })
-
-    print("[INFO] Initializing MCP tools...")
-    tools = await mcp_client.get_tools()
-    print(f"[INFO] Retrieved {len(tools)} tools from MCP.")
-    
-    # Ensure database directory exists
-    os.makedirs("database", exist_ok=True)
-    
-    async with AsyncSqliteSaver.from_conn_string("database/checkpoints.sqlite") as checkpointer:
-        graph_app = create_graph(tools, checkpointer)
-        print("[INFO] LangGraph initialized with AsyncSqliteSaver.")
-
-        handler = AsyncSocketModeHandler(app, os.getenv("SLACK_APP_TOKEN"))
-        print("[INFO] Starting MapirBot...")
-        await handler.start_async()
+    handler = AsyncSocketModeHandler(app, os.getenv("SLACK_APP_TOKEN"))
+    print("[INFO] Starting MapirBot Slack App (API Client mode)...")
+    await handler.start_async()
 
 if __name__ == "__main__":
     try:

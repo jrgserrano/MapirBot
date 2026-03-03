@@ -19,3 +19,6 @@ pypdf==6.6.2
 fastapi[standard]
 gunicorn
 uvicorn
+ddgs
+geopy
+mcp

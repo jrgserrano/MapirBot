@@ -1,19 +1,18 @@
 import requests
 import json
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-def test_ask():
-    url = "https://dynamic-gig-networks-silk.trycloudflare.com/ask"
-    payload = {
-        "query": "Hola, cómo estás?",
-        "thread_id": "test_thread_123"
-    }
+def test_get_graph():
+    url = "https://sagem-aluminium-mud-heading.trycloudflare.com/get_graph"
     headers = {
         "Content-Type": "application/json"
     }
 
     try:
         print(f"Sending request to {url}...")
-        response = requests.post(url, data=json.dumps(payload), headers=headers)
+        response = requests.get(url, headers=headers)
         
         if response.status_code == 200:
             print("Success!")
@@ -25,4 +24,4 @@ def test_ask():
         print(f"Connection failed: {e}")
 
 if __name__ == "__main__":
-    test_ask()
+    test_get_graph()

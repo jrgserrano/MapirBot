@@ -1,30 +1,37 @@
-import sys
+import asyncio
 import os
+import sys
+
+# Add the root directory to sys.path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from agent.graph import graph_app
+from agent.graph import create_graph
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+from langchain_mcp_adapters.client import MultiServerMCPClient
 
-# State with thread_id for short-term memory
-config = {"configurable": {"thread_id": "knowledge_test"}}
+async def run_test():
+    mcp_client = MultiServerMCPClient({
+        "paper_search": {
+            "command": sys.executable,
+            "args": ["-m", "paper_search_mcp.server"],
+            "transport": "stdio"
+        }
+    })
+    
+    # Direct usage as recommended by the error message
+    tools = await mcp_client.get_tools()
+    
+    os.makedirs("database", exist_ok=True)
+    async with AsyncSqliteSaver.from_conn_string("database/checkpoints.sqlite") as checkpointer:
+        graph_app = create_graph(tools, checkpointer)
+        config = {"configurable": {"thread_id": "cli_test"}}
+        
+        print("\n--- TEST: ASK QUESTION ---")
+        resp = await graph_app.ainvoke({"messages": [("user", "Hola, me llamo Jorge y me encanta el pádel.")]}, config)
+        print(f"Agent: {resp['messages'][-1].content}")
 
-# 1. TURN 1: INTRODUCE
-print("--- TURN 1: INTRODUCE ---")
-resp = graph_app.invoke({"messages": [("user", "Hi! My name is Jorge.")]}, config)
-print("User: Hi! My name is Jorge.")
-print(f"Agent: {resp.get('messages')[-1].content}")
+        resp = await graph_app.ainvoke({"messages": [("user", "¿Cómo he dicho que me llamo?")]}, config)
+        print(f"Agent: {resp['messages'][-1].content}")
 
-# 2. TURN 2: VERIFY MEMORY
-print("\n--- TURN 2: VERIFY MEMORY ---")
-resp = graph_app.invoke({"messages": [("user", "What is my name?")]}, config)
-print("User: What is my name?")
-print(f"Agent: {resp.get('messages')[-1].content}")
-
-print("\n--- TEST COMPLETE ---")
-
-# Save graph visualization to a file
-try:
-    with open("graph.png", "wb") as f:
-        f.write(graph_app.get_graph().draw_mermaid_png())
-    print("Graph visualization saved to graph.png")
-except Exception as e:
-    print(f"Could not save graph image: {e}")
+if __name__ == "__main__":
+    asyncio.run(run_test())

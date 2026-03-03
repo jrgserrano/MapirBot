@@ -1,7 +1,8 @@
 import requests
+import geopy
 from langchain_core.tools import tool
 
-@tool
+@tool("get_weather")
 def get_weather(location: str) -> str:
     """Get the current weather for a specific location."""
     

@@ -67,7 +67,7 @@ async def knowledge_base_update(text: str, source_name: str) -> str:
 
     vector_store.add_documents(docs)
 
-    return f"Knowledge base (Chroma) updated successfully. {len(docs)} chunks added from {source_name}."
+    return f"RAG updated successfully. {len(docs)} chunks added from {source_name}."
     
 
     
