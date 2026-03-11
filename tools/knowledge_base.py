@@ -15,21 +15,30 @@ from datetime import datetime, timezone
 from agent.graphiti_client import get_graphiti
 from graphiti_core.nodes import EpisodeType
 
-embeddings = OllamaEmbeddings(
-    model="mxbai-embed-large"
-)
+_embeddings = None
+_vector_store = None
 
-vector_store = Chroma(
-    persist_directory="./database/chroma_db",
-    embedding_function=embeddings
-)
+def get_vector_store():
+    global _embeddings, _vector_store
+    if _vector_store is None:
+        print("[INFO] Initializing ChromaDB vector store lazily...")
+        from langchain_ollama import OllamaEmbeddings
+        from langchain_chroma import Chroma
+        
+        _embeddings = OllamaEmbeddings(model="mxbai-embed-large")
+        _vector_store = Chroma(
+            persist_directory="./database/chroma_db",
+            embedding_function=_embeddings
+        )
+    return _vector_store
 
 @tool
 async def knowledge_base(query: str) -> str:
     """Search for relevant information in the knowledge base."""
 
     # 1. Chroma Search
-    docs = vector_store.similarity_search(query, k=3)
+    vs = get_vector_store()
+    docs = vs.similarity_search(query, k=3)
     chroma_info = "\n\n".join([d.page_content for d in docs]) if docs else "No relevant information found in vector storage."
 
     # 2. Graphiti Search
@@ -65,7 +74,8 @@ async def knowledge_base_update(text: str, source_name: str) -> str:
         for chunk in chunks
     ]
 
-    vector_store.add_documents(docs)
+    vs = get_vector_store()
+    vs.add_documents(docs)
 
     return f"RAG updated successfully. {len(docs)} chunks added from {source_name}."
     

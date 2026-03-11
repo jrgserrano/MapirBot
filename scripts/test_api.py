@@ -2,7 +2,7 @@ import requests
 import json
 
 def test_ask():
-    url = "https://dynamic-gig-networks-silk.trycloudflare.com/ask"
+    url = "https://specialists-generous-gathered-games.trycloudflare.com/ask"
     payload = {
         "query": "Hola, cómo estás?",
         "thread_id": "test_thread_123"
