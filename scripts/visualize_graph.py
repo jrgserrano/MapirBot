@@ -103,22 +103,18 @@ async def main():
     try:
         nodes, edges = await get_graph_data()
         
-        # 1. Mermaid
-        print("[INFO] Generating Mermaid diagram...")
-        mermaid_code = generate_mermaid(nodes, edges)
-        with open("graph_output.md", "w") as f:
-            f.write("# Knowledge Graph Visualization (Mermaid)\n\n")
-            f.write("```mermaid\n")
-            f.write(mermaid_code)
-            f.write("\n```\n")
-        
-        # 2. PNG
+        # Generate PNG only
         print("[INFO] Generating PNG image...")
         png_path = generate_png(nodes, edges)
         
-        print(f"[SUCCESS] Mermaid saved to graph_output.md")
         print(f"[SUCCESS] PNG saved to {png_path}")
         
+        # Abrir auto la imagen si en Mac
+        import sys
+        if sys.platform == "darwin":
+            os.system(f"open {png_path}")
+            print(f"[INFO] Opening {png_path}...")
+            
     except Exception as e:
         print(f"[ERROR] Failed to generate visualization: {e}")
         import traceback
