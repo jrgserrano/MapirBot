@@ -2,9 +2,9 @@ import requests
 import json
 
 def test_ask():
-    url = "https://specialists-generous-gathered-games.trycloudflare.com/ask"
+    url = "https://alt-gone-ent-pensions.trycloudflare.com/ask"
     payload = {
-        "query": "Hola, cómo estás?",
+        "query": "qué tiempo hace en málaga?",
         "thread_id": "test_thread_123"
     }
     headers = {

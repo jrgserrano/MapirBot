@@ -19,26 +19,26 @@ async def get_graph_data():
     edges = []
 
     async with driver.session() as session:
-        # Query all nodes
-        result = await session.run("MATCH (n) RETURN id(n) as id, labels(n) as labels, n.name as name, n.content as content")
+        # Query all nodes (Graphiti uses n.name, n.summary, n.content)
+        result = await session.run("MATCH (n) RETURN id(n) as id, labels(n) as labels, n.name as name, n.content as content, n.summary as summary")
         async for record in result:
             node_id = record["id"]
             labels = record["labels"]
-            name = record["name"] or record["content"] or f"Node_{node_id}"
+            name = record["name"] or record["summary"] or record["content"] or f"Node_{node_id}"
             nodes.append({
                 "id": node_id,
                 "label": labels[0] if labels else "Unknown",
                 "name": str(name)
             })
 
-        # Query all relationships
-        result = await session.run("MATCH (n)-[r]->(m) RETURN id(n) as start_id, id(m) as end_id, type(r) as type, r.relation as relation")
+        # Query all relationships (Graphiti uses r.fact or r.relation)
+        result = await session.run("MATCH (n)-[r]->(m) RETURN id(n) as start_id, id(m) as end_id, type(r) as type, r.relation as relation, r.fact as fact")
         async for record in result:
             edges.append({
                 "start": record["start_id"],
                 "end": record["end_id"],
                 "type": record["type"],
-                "relation": record["relation"] or record["type"]
+                "relation": record["fact"] or record["relation"] or record["type"]
             })
 
     await driver.close()

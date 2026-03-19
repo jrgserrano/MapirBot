@@ -1,0 +1,15 @@
+graphiti:
+  neo4j_uri: "bolt://localhost:7687"
+  neo4j_user: "neo4j"
+  neo4j_password: "neo4j_changed"
+  group_id: "main"
+
+llm:
+  base_url: "http://localhost:1234/v1"
+  model: "mistral-nemo-12b-instruct-2407"
+  api_key: "lm-studio"
+
+embedder:
+  base_url: "http://localhost:1234/v1"
+  model: "text-embedding-nomic-embed-text-v1.5" # or similar
+  api_key: "lm-studio"
