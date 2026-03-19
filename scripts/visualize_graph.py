@@ -19,26 +19,26 @@ async def get_graph_data():
     edges = []
 
     async with driver.session() as session:
-        # Query all nodes
-        result = await session.run("MATCH (n) RETURN id(n) as id, labels(n) as labels, n.name as name, n.content as content")
+        # Query all nodes (Graphiti uses n.name, n.summary, n.content)
+        result = await session.run("MATCH (n) RETURN id(n) as id, labels(n) as labels, n.name as name, n.content as content, n.summary as summary")
         async for record in result:
             node_id = record["id"]
             labels = record["labels"]
-            name = record["name"] or record["content"] or f"Node_{node_id}"
+            name = record["name"] or record["summary"] or record["content"] or f"Node_{node_id}"
             nodes.append({
                 "id": node_id,
                 "label": labels[0] if labels else "Unknown",
                 "name": str(name)
             })
 
-        # Query all relationships
-        result = await session.run("MATCH (n)-[r]->(m) RETURN id(n) as start_id, id(m) as end_id, type(r) as type, r.relation as relation")
+        # Query all relationships (Graphiti uses r.fact or r.relation)
+        result = await session.run("MATCH (n)-[r]->(m) RETURN id(n) as start_id, id(m) as end_id, type(r) as type, r.relation as relation, r.fact as fact")
         async for record in result:
             edges.append({
                 "start": record["start_id"],
                 "end": record["end_id"],
                 "type": record["type"],
-                "relation": record["relation"] or record["type"]
+                "relation": record["fact"] or record["relation"] or record["type"]
             })
 
     await driver.close()
@@ -103,22 +103,18 @@ async def main():
     try:
         nodes, edges = await get_graph_data()
         
-        # 1. Mermaid
-        print("[INFO] Generating Mermaid diagram...")
-        mermaid_code = generate_mermaid(nodes, edges)
-        with open("graph_output.md", "w") as f:
-            f.write("# Knowledge Graph Visualization (Mermaid)\n\n")
-            f.write("```mermaid\n")
-            f.write(mermaid_code)
-            f.write("\n```\n")
-        
-        # 2. PNG
+        # Generate PNG only
         print("[INFO] Generating PNG image...")
         png_path = generate_png(nodes, edges)
         
-        print(f"[SUCCESS] Mermaid saved to graph_output.md")
         print(f"[SUCCESS] PNG saved to {png_path}")
         
+        # Abrir auto la imagen si en Mac
+        import sys
+        if sys.platform == "darwin":
+            os.system(f"open {png_path}")
+            print(f"[INFO] Opening {png_path}...")
+            
     except Exception as e:
         print(f"[ERROR] Failed to generate visualization: {e}")
         import traceback

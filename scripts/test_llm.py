@@ -1,32 +1,33 @@
-import os
-import sys
+import asyncio
+from openai import AsyncOpenAI
+import json
 
-# Add the project root to sys.path to allow imports from agent.llm
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-try:
-    from agent.llm import llm_text
-    from langchain_core.messages import HumanMessage
-    print("✅ LLM configuration imported successfully.")
-except ImportError as e:
-    print(f"❌ Error importing llm from agent.llm: {e}")
-    sys.exit(1)
-
-def test_llm():
-    print("\n--- Testing LLM Connectivity ---")
-    question = "Hola, ¿puedes presentarte brevemente?"
-    print(f"Pregunta: {question}")
+async def main():
+    client = AsyncOpenAI(
+        base_url="http://127.0.0.1:1234/v1",
+        api_key="lm-studio"
+    )
     
+    print("Testing chat completion...")
     try:
-        print("Esperando respuesta del modelo...")
-        response = llm_text.invoke([HumanMessage(content=question)])
-        print("\n--- Respuesta del Modelo ---")
-        print(response.content)
-        print("\n--- Fin de la prueba ---")
-        print("✅ Prueba de conectividad exitosa.")
+        response = await client.chat.completions.create(
+            model="google/gemma-3-4b",
+            messages=[{"role": "user", "content": "Hello"}],
+            max_tokens=10
+        )
+        print("Chat response:", response.choices[0].message.content)
     except Exception as e:
-        print(f"\n❌ Error al invocar el LLM: {e}")
-        print("\nAsegúrate de que LM Studio esté corriendo y el modelo esté cargado en el puerto 1234.")
+        print("Chat Error:", e)
+
+    print("\nTesting embeddings...")
+    try:
+        response = await client.embeddings.create(
+            model="text-embedding-nomic-embed-text-v1.5",
+            input=["This is a test of the embedding system."]
+        )
+        print("Embedding length:", len(response.data[0].embedding))
+    except Exception as e:
+        print("Embedding Error:", e)
 
 if __name__ == "__main__":
-    test_llm()
+    asyncio.run(main())
